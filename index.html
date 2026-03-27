@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GainMore Supermarket - Inventory Management System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Professional Green and Neutral Grays -->
+    <!-- Application Structure Plan: The application now defaults to the customer view, prioritizing the e-commerce experience. A new logo enhances branding. A login prompt secures role-switching. The key update is the functional integration of the Gemini API for business insights, making the dashboard an active analytical tool. -->
+    <!-- Visualization & Content Choices: 
+    - Login Modal: Secures privileged roles.
+    - Online Store: Now features dynamic product images for a better user experience. It's the default view on load.
+    - AI Insights: The dashboard button now makes a live call to the Gemini API with a system instruction to act as a business analyst, providing genuine, context-aware summaries.
+    - Logo: An inline SVG logo has been added to the sidebar for improved branding.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .sidebar { transition: width 0.3s; }
+        .modal-backdrop { background-color: rgba(0,0,0,0.5); }
+        .nav-item.active { background-color: #10B981; color: white; }
+        .low-stock { background-color: #FEE2E2 !important; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        .spinner { border: 4px solid rgba(0, 0, 0, 0.1); border-left-color: #10B981; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: white; opacity: 0; transition: opacity 0.5s, bottom 0.5s; z-index: 100; }
+        .toast.show { opacity: 1; bottom: 40px; }
+        .toast.success { background-color: #10B981; }
+        .toast.error { background-color: #EF4444; }
+    </style>
+</head>
+<body>
+    <div class="flex h-screen bg-gray-100 text-gray-800">
+        <!-- Sidebar Navigation -->
+        <aside id="sidebar" class="w-64 bg-gray-800 text-white flex flex-col transition-all duration-300">
+            <div class="flex items-center justify-center h-16 border-b border-gray-700">
+                <svg class="w-8 h-8 mr-2 text-green-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c.51 0 .962-.343 1.087-.835l.383-1.437M7.5 14.25L5.106 5.165A2.25 2.25 0 017.25 3h9.5a2.25 2.25 0 012.144 2.165L16.5 14.25" />
+                </svg>
+                <span class="text-2xl font-bold">GainMore Supermarket</span>
+            </div>
+            <nav id="sidebar-nav" class="flex-1 px-4 py-6 space-y-2"></nav>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <header class="bg-white shadow-md p-4 flex justify-between items-center">
+                <h1 id="page-title" class="text-2xl font-semibold">Dashboard</h1>
+                <div class="flex items-center space-x-4">
+                    <div id="cart-icon-container" class="relative hidden">
+                        <button id="cart-icon-btn" class="relative">
+                            <span class="text-3xl">🛒</span>
+                            <span id="cart-item-count" class="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">0</span>
+                        </button>
+                    </div>
+                    <span class="font-medium">User Role:</span>
+                    <select id="role-switcher" class="p-2 border rounded-md shadow-sm focus:ring-green-500 focus:border-green-500">
+                        <option value="customer" selected>Customer (Online Store)</option>
+                        <option value="cashier">Sales Staff (Cashier)</option>
+                        <option value="manager">Inventory Manager</option>
+                        <option value="admin">Administrator</option>
+                    </select>
+                </div>
+            </header>
+            <main id="main-content" class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6"></main>
+        </div>
+    </div>
+
+    <!-- Modals and Toast Container -->
+    <div id="product-modal" class="fixed inset-0 z-50 items-center justify-center hidden modal-backdrop"></div>
+    <div id="store-cart-modal" class="fixed inset-0 z-50 items-center justify-center hidden modal-backdrop"></div>
+    <div id="login-modal" class="fixed inset-0 z-50 items-center justify-center hidden modal-backdrop"></div>
+    <div id="toast-container"></div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const LOW_STOCK_THRESHOLD = 10;
+            
+            const userCredentials = { admin: 'admin123', manager: 'manager123', cashier: 'cashier123' };
+            let currentRole = 'customer';
+            let targetRole = null;
+
+            let products = [
+                {id: 1, sku: '615647000021', name: 'Indomie Instant Noodles', category: 'Groceries', price: 150, quantity: 150, soldCount: 45, description: 'Classic and beloved instant noodles, a staple in every Nigerian kitchen. Quick, easy, and delicious for any meal.', imageUrl: 'userImage/Indomie.jpeg'},
+                {id: 2, sku: '615600010013', name: 'Peak Evaporated Milk', category: 'Groceries', price: 450, quantity: 8, soldCount: 92, description: 'Rich and creamy evaporated milk, perfect for your tea, coffee, pap, and baking needs. Fortified with vitamins.', imageUrl: 'userImage/Peakmilk.jpeg'},
+                {id: 3, sku: '615100020011', name: 'Dangote Sugar 1kg', category: 'Groceries', price: 1200, quantity: 75, soldCount: 25, description: 'Fine granulated sugar from Dangote, ideal for sweetening beverages, cooking, and baking. Pure and high quality.', imageUrl: 'userImage/Dangote sugar.jpeg'},
+                {id: 4, sku: '8992761132029', name: 'Milo Sachet 20g', category: 'Beverages', price: 100, quantity: 200, soldCount: 300, description: 'The energy food drink for champions! Enjoy the unique choco-malt taste of Milo, hot or cold, to start your day right.', imageUrl: 'userImage/Milo Sachet.jpg'},
+                {id: 5, sku: '615100030018', name: 'Golden Morn 500g', category: 'Cereals', price: 950, quantity: 50, soldCount: 60, description: 'A nutritious and tasty whole maize and soya cereal for the whole family. A great source of energy and protein.', imageUrl: 'userImage/Goldenmorn.jpeg'},
+                {id: 6, sku: '615600040010', name: 'Coca-Cola 50cl', category: 'Beverages', price: 250, quantity: 120, soldCount: 180, description: 'The original and refreshing taste of Coca-Cola. Enjoy the crisp, cold bubbly refreshment with any meal.', imageUrl: 'userImage/Coke.webp'},
+                {id: 7, sku: '615600050017', name: 'Lacasera Apple Drink', category: 'Beverages', price: 200, quantity: 5, soldCount: 155, description: 'A sparkling and refreshing apple fruit drink. Made with real apple juice for a crisp and sweet taste.', imageUrl: 'userImage/Lacasera.webp'},
+                {id: 8, sku: '079400123456', name: 'Agege Bread', category: 'Bakery', price: 500, quantity: 40, soldCount: 80, description: 'The authentic, soft, and fluffy Agege bread. Perfect for sandwiches, toast, or enjoying with your favorite spread.', imageUrl: 'userImage/Agege bread.jpg'},
+                {id: 9, sku: '615100090012', name: 'Omo Washing Powder', category: 'Household', price: 300, quantity: 60, soldCount: 40, description: 'Powerful stain removal for your clothes. Omo washing powder leaves your laundry bright, clean, and fresh.', imageUrl: 'userImage/Omo-Detergent.jpg'},
+                {id: 10, sku: '4800016645321', name: 'Close Up Toothpaste', category: 'Toiletries', price: 700, quantity: 30, soldCount: 70, description: 'Get fresh breath and white teeth with Close Up. Its triple fresh formula gives you confidence all day long.', imageUrl: 'userImage/Close up.jpg'},
+                {id: 11, sku: '6211000123456', name: 'Sunlight Dish Soap', category: 'Household', price: 650, quantity: 12, soldCount: 35, description: 'Tough on grease, gentle on hands. Sunlight dishwashing liquid makes your dishes sparkling clean with just one wash.', imageUrl: 'userImage/Sunlight-liquid-soap.jpeg'},
+                {id: 12, sku: '9556001234567', name: 'Pampers Diapers Pack', category: 'Baby Products', price: 3500, quantity: 25, soldCount: 15, description: 'Keep your baby dry and comfortable with Pampers. Provides up to 12 hours of dryness for a peaceful night\'s sleep.', imageUrl: 'userImage/Pampers.jpeg'},
+            ];
+
+            let sales = []; let posCart = []; let storeCart = []; loadStoreCart();
+
+            const mainContent = document.getElementById('main-content');
+            const pageTitle = document.getElementById('page-title');
+            const roleSwitcher = document.getElementById('role-switcher');
+            const sidebarNav = document.getElementById('sidebar-nav');
+            const productModalContainer = document.getElementById('product-modal');
+            const storeCartModalContainer = document.getElementById('store-cart-modal');
+            const loginModalContainer = document.getElementById('login-modal');
+            const toastContainer = document.getElementById('toast-container');
+            const cartIconContainer = document.getElementById('cart-icon-container');
+
+            const navConfig = { admin: ['dashboard', 'inventory', 'pos', 'reports', 'store'], manager: ['dashboard', 'inventory', 'reports'], cashier: ['pos'], customer: ['store'] };
+            const viewTemplates = { dashboard: { name: 'Dashboard', icon: '🏠', render: renderDashboard }, inventory: { name: 'Inventory', icon: '📦', render: renderInventory }, pos: { name: 'Point of Sale', icon: '🛒', render: renderPOS }, reports: { name: 'Reports', icon: '📊', render: renderReports }, store: { name: 'Online Store', icon: '🛍️', render: renderStore } };
+            
+            
+            async function callGeminiAPI(prompt, button) {
+                const spinner = button.querySelector('.spinner');
+                const buttonText = button.querySelector('span');
+                const originalText = buttonText.textContent;
+                spinner.classList.remove('hidden');
+                buttonText.textContent = 'Generating...';
+                button.disabled = true;
+                const apiKey = "AIzaSyB77HjVXVGaVQJWfnq_SXt2bQ6O1xO3bgE"; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                
+                const systemInstruction = {
+                    parts: [{ text: "You are a professional business analyst for a Nigerian retail supermarket. Your analysis should be concise, insightful, and easy for a manager to understand. Use Naira (₦) for currency." }]
+                };
+
+                const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction };
+                
+                try {
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(`API request failed: ${error.error.message}`);
+                    }
+                    const result = await response.json();
+                    return result.candidates?.[0]?.content?.parts?.[0]?.text || "Could not generate a response.";
+                } catch (error) {
+                    console.error("Gemini API call failed:", error);
+                    showToast(`AI Error: ${error.message}`, 'error');
+                    return "Error: Could not retrieve data from the AI. Please check the console for details.";
+                } finally {
+                    spinner.classList.add('hidden');
+                    buttonText.textContent = originalText;
+                    button.disabled = false;
+                }
+            }
+
+            function showToast(message, type = 'success') {
+                const toast = document.createElement('div');
+                toast.className = `toast ${type}`;
+                toast.textContent = message;
+                toastContainer.appendChild(toast);
+                setTimeout(() => {
+                    toast.classList.add('show');
+                    setTimeout(() => {
+                        toast.classList.remove('show');
+                        setTimeout(() => toast.remove(), 500);
+                    }, 3000);
+                }, 100);
+            }
+
+
+
+            function addToStoreCart(productId) {
+    const numericalId = Number(productId); 
+    
+    // Ensure you are referencing your variables correctly (either globally or using window.)
+    const product = products.find(p => p.id === numericalId); 
+    const currentStock = Number(product.quantity); 
+
+    if (!product || currentStock <= 0) {
+        showToast('Item is out of stock!', 'error'); 
+        return;
+    }
+
+    const cartItem = storeCart.find(item => item.id === numericalId);
+
+    if (cartItem) {
+        cartItem.quantity++;
+    } else {
+        storeCart.push({
+            id: numericalId,
+            name: product.name,
+            price: product.price,
+            quantity: 1
+        });
+    }
+
+    localStorage.setItem('gainMoreStoreCart', JSON.stringify(storeCart));
+    updateStoreCartIcon();
+    showToast(`${product.name} added to cart!`, 'success');
+    
+    // 🛑 CRITICAL: DO NOT ADD updateStoreCartModalView() here!
+}
+
+
+
+
+// Function to update the number on the cart icon
+function updateStoreCartIcon() {
+    const countElement = document.getElementById('cart-item-count');
+    const totalItems = storeCart.reduce((sum, item) => sum + item.quantity, 0);
+    countElement.textContent = totalItems;
+    // Show the cart icon only if the role is 'customer' and there are items
+    cartIconContainer.classList.toggle('hidden', currentRole !== 'customer' || totalItems === 0);
+}
+
+// Load cart from localStorage on startup
+function loadStoreCart() {
+    const savedCart = localStorage.getItem('gainMoreStoreCart');
+    if (savedCart) {
+        try {
+            storeCart = JSON.parse(savedCart);
+        } catch (e) {
+            console.error("Error parsing stored cart:", e);
+            storeCart = [];
+        }
+    }
+    updateStoreCartIcon();
+}
+
+
+
+// Function to handle quantity change directly in the cart modal
+function updateCartQuantity(productId, delta) {
+    const cartItem = storeCart.find(item => item.id === productId);
+    if (!cartItem) return;
+
+    cartItem.quantity += delta;
+
+    if (cartItem.quantity <= 0) {
+        // Remove item if quantity drops to 0 or less
+        storeCart = storeCart.filter(item => item.id !== productId);
+    }
+
+    localStorage.setItem('gainMoreStoreCart', JSON.stringify(storeCart));
+    updateStoreCartIcon();
+    renderStoreCartModal(); // Re-render the modal to show changes
+}
+
+
+
+
+
+
+
+// This function simulates the final checkout step and confirms the order
+function processCheckout() {
+    const subtotal = storeCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const shipping = subtotal > 0 ? 500 : 0; 
+    
+    // ➡️ FIX 1: DEDUCT SOLD ITEMS FROM INVENTORY
+    storeCart.forEach(soldItem => {
+        const inventoryItem = products.find(p => p.id === soldItem.id);
+        if (inventoryItem) {
+            inventoryItem.quantity -= soldItem.quantity;
+            inventoryItem.soldCount += soldItem.quantity; // Also update sold count
+        }
+    });
+    
+    // 1. Log the final order
+    const finalOrder = {
+        date: new Date().toISOString(),
+        items: storeCart,
+        total: subtotal + shipping,
+        role: 'customer-online' 
+    };
+    sales.push(finalOrder); 
+    
+    // 2. Clear the cart
+    storeCart = [];
+    localStorage.removeItem('gainMoreStoreCart');
+    updateStoreCartIcon();
+    closeModal('store-cart-modal');
+    
+    // 3. Show confirmation
+    showToast('🎉 Order Placed Successfully! Thank you for shopping.', 'success');
+    
+    // If the user is on the store page, re-render it to reflect new stock levels
+    if (pageTitle.textContent === 'Online Store') {
+        renderStore(document.getElementById('main-content'));
+    }
+}
+
+
+
+
+
+// Function to render the cart summary and checkout page modal
+function renderStoreCartModal() {
+    const totalItems = storeCart.reduce((sum, item) => sum + item.quantity, 0);
+    const subtotal = storeCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const shipping = subtotal > 0 ? 500 : 0; 
+    const grandTotal = subtotal + shipping;
+
+    const cartContent = totalItems === 0
+        ? '<p class="text-center text-gray-500 py-10">Your cart is empty. Time to shop!</p>'
+        : `<div class="space-y-4 max-h-72 overflow-y-auto pr-2">
+            ${storeCart.map(item => `
+                <div class="flex justify-between items-center border-b pb-2">
+                    <div class="flex-1">
+                        <p class="font-semibold">${item.name}</p>
+                        <p class="text-sm text-gray-500">₦${item.price.toLocaleString()}</p>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="updateCartQuantity(${item.id}, -1)" class="text-red-500 hover:text-red-700 font-bold p-1 border rounded leading-none w-6 h-6 flex items-center justify-center">-</button>
+                        <span class="w-6 text-center">${item.quantity}</span>
+                        <button onclick="updateCartQuantity(${item.id}, 1)" class="text-green-500 hover:text-green-700 font-bold p-1 border rounded leading-none w-6 h-6 flex items-center justify-center">+</button>
+                        <span class="font-semibold w-24 text-right">₦${(item.price * item.quantity).toLocaleString()}</span>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+        
+        <div class="mt-6 pt-4 border-t space-y-2">
+            <div class="flex justify-between">
+                <span class="text-gray-600">Subtotal:</span>
+                <span class="font-medium">₦${subtotal.toLocaleString()}</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-600">Shipping (Flat Rate):</span>
+                <span class="font-medium">₦${shipping.toLocaleString()}</span>
+            </div>
+            <div class="flex justify-between text-xl font-bold border-t pt-2">
+                <span>Grand Total:</span>
+                <span class="text-green-600">₦${grandTotal.toLocaleString()}</span>
+            </div>
+        </div>
+        <button id="checkout-btn" ${totalItems === 0 ? 'disabled' : ''} class="w-full bg-green-600 text-white font-bold py-3 rounded-lg mt-6 hover:bg-green-700 transition duration-150 disabled:opacity-50">
+            🛒 Proceed to Secure Checkout
+        </button>
+        `;
+
+    storeCartModalContainer.innerHTML = `
+        <div class="fixed inset-0 flex items-center justify-center z-50 modal-backdrop">
+            <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-hidden">
+                <div class="flex justify-between items-center border-b pb-3 mb-4">
+                    <h3 class="text-2xl font-bold text-green-600">Your Shopping Cart</h3>
+                    <button onclick="closeModal('store-cart-modal')" class="text-gray-400 hover:text-gray-700 text-3xl leading-none p-1">&times;</button>
+                </div>
+                ${cartContent}
+            </div>
+        </div>
+    `;
+    storeCartModalContainer.classList.remove('hidden');
+
+    // Add event listener for the checkout button
+    if (totalItems > 0) {
+        document.getElementById('checkout-btn').addEventListener('click', processCheckout);
+    }
+}
+
+
+
+
+
+
+
+            function updateUIForRole(role) {
+                currentRole = role;
+                roleSwitcher.value = role;
+                const allowedViews = navConfig[role];
+                sidebarNav.innerHTML = '';
+                allowedViews.forEach(viewId => {
+                    const view = viewTemplates[viewId];
+                    const navItem = document.createElement('a');
+                    navItem.href = '#';
+                    navItem.className = 'nav-item flex items-center p-3 rounded-lg hover:bg-green-700';
+                    navItem.dataset.view = viewId;
+                    navItem.innerHTML = `<span class="mr-3 text-2xl">${view.icon}</span><span>${view.name}</span>`;
+                    sidebarNav.appendChild(navItem);
+                });
+                cartIconContainer.classList.toggle('hidden', role !== 'customer');
+                updateStoreCartIcon();
+                navigateTo(allowedViews[0]);
+            }
+
+            function navigateTo(viewId) {
+                if (!viewTemplates[viewId]) return;
+                const view = viewTemplates[viewId];
+                pageTitle.textContent = view.name;
+                mainContent.innerHTML = '';
+                view.render(mainContent);
+                document.querySelectorAll('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.view === viewId));
+            }
+
+            function renderDashboard(container) {
+                container.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6"><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500">Total Products</h3><p class="text-3xl font-bold">${products.length}</p></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500">Low Stock Items</h3><p class="text-3xl font-bold text-red-500">${products.filter(p => p.quantity <= LOW_STOCK_THRESHOLD).length}</p></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500">Total Sales Value</h3><p class="text-3xl font-bold">₦${sales.reduce((s, sa) => s + sa.total, 0).toLocaleString()}</p></div></div><div class="bg-white p-6 rounded-lg shadow mb-6"><div class="flex justify-between items-center mb-4"><h3 class="text-xl font-semibold">Business Performance Insights</h3><button id="get-insights-btn" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center space-x-2"><span>✨ Get AI Insights</span><div class="spinner hidden"></div></button></div><div id="ai-insights-container" class="bg-green-50 p-4 rounded-md text-gray-700 hidden min-h-[100px]"></div></div><div class="grid grid-cols-1 lg:grid-cols-5 gap-6"><div class="lg:col-span-3 bg-white p-6 rounded-lg shadow"><h3 class="text-xl font-semibold mb-4">Top 5 Selling Products</h3><canvas id="salesChart"></canvas></div><div class="lg:col-span-2 bg-white p-6 rounded-lg shadow"><h3 class="text-xl font-semibold mb-4">Inventory by Category</h3><canvas id="categoryChart"></canvas></div></div>`;
+                const topSellingProducts = [...products].sort((a,b) => b.soldCount - a.soldCount).slice(0, 5);
+                const categories = [...new Set(products.map(p => p.category))];
+                const categoryCounts = categories.map(cat => ({ category: cat, count: products.filter(p => p.category === cat).length }));
+                if (document.getElementById('salesChart')) new Chart(document.getElementById('salesChart').getContext('2d'), { type: 'bar', data: { labels: topSellingProducts.map(p => p.name), datasets: [{ label: 'Units Sold', data: topSellingProducts.map(p => p.soldCount), backgroundColor: 'rgba(16, 185, 129, 0.6)', borderColor: 'rgba(16, 185, 129, 1)', borderWidth: 1 }] }, options: { scales: { y: { beginAtZero: true } }, responsive: true, maintainAspectRatio: false } });
+                if (document.getElementById('categoryChart')) new Chart(document.getElementById('categoryChart').getContext('2d'), { type: 'doughnut', data: { labels: categoryCounts.map(c => c.category), datasets: [{ data: categoryCounts.map(c => c.count), backgroundColor: ['#10B981', '#F59E0B', '#3B82F6', '#EF4444', '#6366F1', '#8B5CF6'] }] }, options: { responsive: true, maintainAspectRatio: false } });
+                document.getElementById('get-insights-btn').addEventListener('click', async (e) => {
+                    const button = e.currentTarget;
+                    const insightsContainer = document.getElementById('ai-insights-container');
+                    insightsContainer.classList.remove('hidden');
+                    insightsContainer.innerHTML = `<div class="flex items-center justify-center h-full"><div class="spinner"></div><p class="ml-4">Analyzing data...</p></div>`;
+                    const totalSalesValue = sales.reduce((sum, sale) => sum + sale.total, 0);
+                    const prompt = `Provide a concise, insightful summary of GainMore Supermarket's current performance based on this data. Highlight one key strength and one potential area for concern. Data: Total unique products: ${products.length}. Items with low stock (<= ${LOW_STOCK_THRESHOLD} units): ${products.filter(p => p.quantity <= LOW_STOCK_THRESHOLD).length}. Total sales revenue: NGN ${totalSalesValue.toLocaleString()}. Top selling products: ${topSellingProducts.map(p => `${p.name} (${p.soldCount} units)`).join(', ') || 'None yet'}. Please provide the summary in a single, well-written paragraph.`;
+                    const insights = await callGeminiAPI(prompt, button);
+                    insightsContainer.innerHTML = insights.replace(/\n/g, '<br>');
+                });
+            }
+
+            function renderInventory(container) {
+                container.innerHTML = `<div class="bg-white p-6 rounded-lg shadow"><div class="flex justify-between items-center mb-4"><input type="text" id="inventory-search" placeholder="Search products..." class="border rounded p-2 w-1/3"><button id="add-product-btn" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Add New Product</button></div><div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="bg-gray-200"><th class="p-3">SKU</th><th class="p-3">Name</th><th class="p-3">Category</th><th class="p-3">Price (NGN)</th><th class="p-3">Stock</th><th class="p-3">Actions</th></tr></thead><tbody id="inventory-table-body"></tbody></table></div></div>`;
+                populateInventoryTable();
+            }
+
+            function populateInventoryTable(filter = '') {
+                const tableBody = document.getElementById('inventory-table-body');
+                if (!tableBody) return;
+                tableBody.innerHTML = '';
+                const filteredProducts = products.filter(p => p.name.toLowerCase().includes(filter.toLowerCase()) || p.sku.toLowerCase().includes(filter.toLowerCase()));
+                filteredProducts.forEach(p => {
+                    const row = document.createElement('tr');
+                    row.className = `border-b ${p.quantity <= LOW_STOCK_THRESHOLD ? 'low-stock' : ''}`;
+                    row.innerHTML = `<td class="p-3">${p.sku}</td><td class="p-3 font-medium">${p.name}</td><td class="p-3">${p.category}</td><td class="p-3">${p.price.toLocaleString()}</td><td class="p-3 font-bold ${p.quantity <= LOW_STOCK_THRESHOLD ? 'text-red-600' : ''}">${p.quantity}</td><td class="p-3"><button data-id="${p.id}" class="edit-product-btn text-blue-500 hover:underline">Edit</button></td>`;
+                    tableBody.appendChild(row);
+                });
+            }
+
+            function renderPOS(container) {
+                container.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full"><div class="lg:col-span-2 bg-white p-4 rounded-lg shadow overflow-y-auto" style="max-height: 80vh;"><input type="text" id="pos-search" placeholder="Search products..." class="border rounded p-2 w-full mb-4"><div id="pos-product-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div></div><div class="bg-white p-6 rounded-lg shadow flex flex-col"><h2 class="text-xl font-bold mb-4">Current Sale</h2><div id="pos-cart-items" class="flex-1 space-y-2 overflow-y-auto"><p class="text-gray-500">No items selected.</p></div><div class="border-t mt-4 pt-4"><div class="flex justify-between items-center text-2xl font-bold"><span>Total:</span><span id="pos-total">₦0.00</span></div><button id="complete-sale-btn" class="bg-green-600 text-white w-full py-3 rounded-md mt-4 hover:bg-green-700 disabled:bg-gray-400" disabled>Complete Sale</button></div></div></div>`;
+                populatePOSGrid();
+            }
+            
+            function populatePOSGrid(filter = '') {
+                const grid = document.getElementById('pos-product-grid'); if(!grid) return; grid.innerHTML = '';
+                const filteredProducts = products.filter(p => p.name.toLowerCase().includes(filter.toLowerCase()));
+                filteredProducts.forEach(p => {
+                    const card = document.createElement('div');
+                    card.className = `border rounded-lg p-3 text-center cursor-pointer hover:shadow-lg hover:border-green-500 ${p.quantity === 0 ? 'opacity-50 cursor-not-allowed' : ''}`;
+                    card.dataset.id = p.id;
+                    card.innerHTML = `<h4 class="font-semibold truncate">${p.name}</h4><p class="text-gray-500">₦${p.price.toLocaleString()}</p><p class="text-sm ${p.quantity <= LOW_STOCK_THRESHOLD ? 'text-red-500' : 'text-gray-400'}">Stock: ${p.quantity}</p>`;
+                    if (p.quantity > 0) card.addEventListener('click', () => addToCart(p.id));
+                    grid.appendChild(card);
+                });
+            }
+
+
+
+            function addToCart(productId) {
+                const product = products.find(p => p.id === productId); if (!product || product.quantity <= 0) return;
+                const existingItem = posCart.find(item => item.id === productId);
+                if (existingItem) { if (existingItem.quantity < product.quantity) existingItem.quantity++; } else { posCart.push({ ...product, quantity: 1 }); }
+                updateCartView();
+            }
+
+            function updateCartView() {
+                const cartItemsContainer = document.getElementById('pos-cart-items'); const totalEl = document.getElementById('pos-total'); const completeSaleBtn = document.getElementById('complete-sale-btn');
+                if (posCart.length === 0) { cartItemsContainer.innerHTML = '<p class="text-gray-500">No items selected.</p>'; completeSaleBtn.disabled = true; } 
+                else {
+                    cartItemsContainer.innerHTML = '';
+                    posCart.forEach(item => { const itemEl = document.createElement('div'); itemEl.className = 'flex justify-between items-center text-sm'; itemEl.innerHTML = `<div><p class="font-medium">${item.name}</p><p class="text-gray-500">₦${item.price.toLocaleString()}</p></div><div class="flex items-center space-x-2"><button data-id="${item.id}" class="cart-qty-decrease bg-gray-200 w-6 h-6 rounded-full">-</button><span>${item.quantity}</span><button data-id="${item.id}" class="cart-qty-increase bg-gray-200 w-6 h-6 rounded-full">+</button><button data-id="${item.id}" class="cart-remove text-red-500 font-bold">X</button></div>`; cartItemsContainer.appendChild(itemEl); });
+                    completeSaleBtn.disabled = false;
+                }
+                totalEl.textContent = `₦${posCart.reduce((s, i) => s + (i.price * i.quantity), 0).toLocaleString()}`;
+            }
+
+            function processSale() {
+                if (posCart.length === 0) return;
+                sales.push({ id: Date.now(), date: new Date().toISOString(), items: posCart.map(i => ({id: i.id, name: i.name, quantity: i.quantity, price: i.price})), total: posCart.reduce((s, i) => s + (i.price * i.quantity), 0) });
+                posCart.forEach(cartItem => { const p = products.find(prod => prod.id === cartItem.id); if (p) { p.quantity -= cartItem.quantity; p.soldCount += cartItem.quantity; } });
+                posCart = []; updateCartView(); populatePOSGrid(document.getElementById('pos-search')?.value || ''); showToast('Sale Completed Successfully!');
+            }
+            
+            function renderReports(container) {
+                container.innerHTML = `<div class="bg-white p-6 rounded-lg shadow"><h2 class="text-xl font-bold mb-4">Sales History</h2><div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="bg-gray-200"><th class="p-3">Order ID</th><th class="p-3">Date</th><th class="p-3">Items</th><th class="p-3">Total (NGN)</th></tr></thead><tbody id="reports-table-body"></tbody></table></div></div>`;
+                const reportsTableBody = document.getElementById('reports-table-body');
+                sales.slice().reverse().forEach(sale => { const row = document.createElement('tr'); row.className = 'border-b'; row.innerHTML = `<td class="p-3">${sale.id}</td><td class="p-3">${new Date(sale.date).toLocaleString()}</td><td class="p-3">${sale.items.map(i => `${i.name} (x${i.quantity})`).join(', ')}</td><td class="p-3 font-medium">${sale.total.toLocaleString()}</td>`; reportsTableBody.appendChild(row); });
+            }
+
+            function renderStore(container) {
+                container.innerHTML = `<div class="bg-white p-6 rounded-lg shadow"><h2 class="text-2xl font-bold mb-6 text-center">Welcome to GainMore Online</h2><div id="store-product-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div></div>`;
+                const storeGrid = document.getElementById('store-product-grid');
+                products.forEach(p => {
+                    const card = document.createElement('div');
+                    card.className = 'border rounded-lg p-4 flex flex-col text-center transition-shadow hover:shadow-xl';
+                    card.innerHTML = `
+                        <img src="${p.imageUrl}" alt="${p.name}" class="h-40 w-full object-cover rounded-md mb-4" onerror="this.onerror=null;this.src='https://placehold.co/400x400/ef4444/ffffff?text=Image+Error';">
+                        <h4 class="font-bold text-lg flex-1">${p.name}</h4>
+                        <p class="text-gray-600 text-sm my-2 h-10 overflow-hidden">${p.description || ''}</p>
+                        <p class="text-xl font-semibold my-2">₦${p.price.toLocaleString()}</p>
+
+${Number(p.quantity) > 0 
+    ? `<button onclick="addToStoreCart(${p.id})"class="add-to-store-cart-btn bg-green-600 text-white w-full py-2 rounded-md mt-2 hover:bg-green-700">Add to Cart</button>` 
+    : `<button class="bg-gray-400 text-white w-full py-2 rounded-md mt-2 cursor-not-allowed" disabled>Out of Stock</button>`}
+`;
+                    storeGrid.appendChild(card);
+                });
+            }
+            
+            function showProductModal(product = null) {
+                productModalContainer.innerHTML = `<div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 m-4 overflow-y-auto max-h-[90vh]"><h2 id="modal-title" class="text-2xl font-bold mb-4">Add New Product</h2><form id="product-form"><input type="hidden" id="product-id"><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label for="product-name" class="block text-sm font-medium">Product Name</label><input type="text" id="product-name" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></div><div><label for="product-sku" class="block text-sm font-medium">SKU (Barcode)</label><input type="text" id="product-sku" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></div><div><label for="product-category" class="block text-sm font-medium">Category</label><select id="product-category" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></select></div><div><label for="product-price" class="block text-sm font-medium">Price (NGN)</label><input type="number" id="product-price" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></div><div><label for="product-quantity" class="block text-sm font-medium">Quantity</label><input type="number" id="product-quantity" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></div></div><div class="mt-4"><div class="flex justify-between items-center mb-1"><label for="product-description" class="block text-sm font-medium">Description</label><button type="button" id="generate-description-btn" class="text-sm bg-green-100 text-green-800 px-3 py-1 rounded-md hover:bg-green-200 flex items-center space-x-2"><span>✨ Generate Description</span><div class="spinner hidden"></div></button></div><textarea id="product-description" rows="4" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"></textarea></div><div class="mt-6 flex justify-end space-x-3"><button type="button" id="modal-cancel" class="bg-gray-200 px-4 py-2 rounded-md">Cancel</button><button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Save Product</button></div></form></div>`;
+                const categorySelect = document.getElementById('product-category');
+                const categories = [...new Set(products.map(p => p.category))];
+                categorySelect.innerHTML = categories.map(c => `<option value="${c}">${c}</option>`).join('') + '<option value="new">Add New Category...</option>';
+
+                if (product) {
+                    document.getElementById('modal-title').textContent = 'Edit Product'; document.getElementById('product-id').value = product.id; document.getElementById('product-name').value = product.name; document.getElementById('product-sku').value = product.sku; categorySelect.value = product.category; document.getElementById('product-price').value = product.price; document.getElementById('product-quantity').value = product.quantity; document.getElementById('product-description').value = product.description || '';
+                } else {
+                    document.getElementById('modal-title').textContent = 'Add New Product'; document.getElementById('product-form').reset();
+                }
+                productModalContainer.classList.remove('hidden'); productModalContainer.classList.add('flex');
+            }
+
+            function hideProductModal() { productModalContainer.classList.add('hidden'); productModalContainer.classList.remove('flex'); }
+
+            function updateStoreCartIcon() { document.getElementById('cart-item-count').textContent = storeCart.reduce((sum, item) => sum + item.quantity, 0); }
+
+
+
+
+
+            function updateStoreCartModalView() {
+                if (storeCartModalContainer.classList.contains('hidden')) return;
+                let content = `<div class="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6 m-4 flex flex-col max-h-[90vh]"><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">Your Shopping Cart</h2><button id="close-cart-modal-btn" class="font-bold text-2xl">&times;</button></div>`;
+                if (storeCart.length === 0) { content += `<div class="flex-1 flex items-center justify-center"><p class="text-gray-500">Your cart is empty.</p></div>`; } 
+                else {
+                    content += `<div id="store-cart-items" class="flex-1 space-y-4 overflow-y-auto pr-2">`;
+                    storeCart.forEach(item => { content += `<div class="flex justify-between items-center"><div class="flex items-center"><img src="${item.imageUrl}" alt="${item.name}" class="w-16 h-16 object-cover rounded mr-4"><div class="text-left"><p class="font-bold">${item.name}</p><p class="text-gray-600">₦${item.price.toLocaleString()}</p></div></div><div class="flex items-center space-x-3"><button data-id="${item.id}" class="store-cart-qty-decrease bg-gray-200 w-7 h-7 rounded-full">-</button><span>${item.quantity}</span><button data-id="${item.id}" class="store-cart-qty-increase bg-gray-200 w-7 h-7 rounded-full">+</button><button data-id="${item.id}" class="store-cart-remove text-red-500 font-bold ml-4">Remove</button></div></div>`; });
+                    content += `</div>`;
+                }
+                const total = storeCart.reduce((s, i) => s + (i.price * i.quantity), 0);
+                content += `<div class="border-t mt-4 pt-4"><div class="flex justify-between items-center text-2xl font-bold"><span>Total:</span><span>₦${total.toLocaleString()}</span></div><button id="checkout-btn" class="bg-green-600 text-white w-full py-3 rounded-md mt-4 hover:bg-green-700 disabled:bg-gray-400" ${storeCart.length === 0 ? 'disabled' : ''}>Proceed to Checkout</button></div></div>`;
+                storeCartModalContainer.innerHTML = content;
+            }
+
+            function showStoreCartModal() { updateStoreCartModalView(); storeCartModalContainer.classList.remove('hidden'); storeCartModalContainer.classList.add('flex'); }
+            function hideStoreCartModal() { storeCartModalContainer.classList.add('hidden'); storeCartModalContainer.classList.remove('flex'); }
+
+            function processCheckout() {
+                if (storeCart.length === 0) return;
+                sales.push({ id: Date.now(), date: new Date().toISOString(), items: storeCart.map(i => ({id: i.id, name: i.name, quantity: i.quantity, price: i.price})), total: storeCart.reduce((s, i) => s + (i.price * i.quantity), 0) });
+                storeCart.forEach(cartItem => { const p = products.find(prod => prod.id === cartItem.id); if (p) { p.quantity -= cartItem.quantity; p.soldCount += cartItem.quantity; } });
+                storeCart = []; hideStoreCartModal(); updateStoreCartIcon(); renderStore(mainContent); showToast('Thank you for your purchase!');
+            }
+
+            function showLoginModal(roleToLogin) {
+                targetRole = roleToLogin;
+                const roleName = roleToLogin.charAt(0).toUpperCase() + roleToLogin.slice(1);
+                loginModalContainer.innerHTML = `
+                    <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-6 m-4">
+                        <h2 class="text-2xl font-bold mb-4">Login as ${roleName}</h2>
+                        <p class="text-sm text-gray-500 mb-4">Hint: password is <span class="font-mono text-black">${userCredentials[targetRole]}</span></p>
+                        <form id="login-form">
+                            <div><label for="password" class="block text-sm font-medium">Password</label><input type="password" id="password" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required></div>
+                            <p id="login-error" class="text-red-500 text-sm mt-2 h-4"></p>
+                            <div class="mt-6 flex justify-end space-x-3"><button type="button" id="login-cancel" class="bg-gray-200 px-4 py-2 rounded-md">Cancel</button><button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Login</button></div>
+                        </form>
+                    </div>`;
+                loginModalContainer.classList.remove('hidden'); loginModalContainer.classList.add('flex'); document.getElementById('password').focus();
+            }
+
+            function hideLoginModal() { loginModalContainer.classList.add('hidden'); loginModalContainer.classList.remove('flex'); }
+
+            roleSwitcher.addEventListener('change', (e) => {
+                const selectedRole = e.target.value; if (selectedRole === currentRole) return;
+                if (userCredentials[selectedRole]) { showLoginModal(selectedRole); e.target.value = currentRole; } 
+                else { updateUIForRole(selectedRole); }
+            });
+
+            sidebarNav.addEventListener('click', (e) => { if (e.target.closest('.nav-item')) { e.preventDefault(); navigateTo(e.target.closest('.nav-item').dataset.view); } });
+            cartIconContainer.addEventListener('click', showStoreCartModal);
+
+            document.body.addEventListener('click', e => {
+                if (e.target.id === 'modal-cancel' || e.target.id === 'close-cart-modal-btn' || e.target.id === 'login-cancel') { hideProductModal(); hideStoreCartModal(); hideLoginModal(); roleSwitcher.value = currentRole; }
+                if (e.target.classList.contains('add-to-store-cart-btn')) addToStoreCart(parseInt(e.target.dataset.id));
+                if (e.target.classList.contains('store-cart-qty-increase')) { const item = storeCart.find(i => i.id === parseInt(e.target.dataset.id)); if (item) addToStoreCart(item.id); }
+                if (e.target.classList.contains('store-cart-qty-decrease')) { const item = storeCart.find(i => i.id === parseInt(e.target.dataset.id)); if (item) { item.quantity--; if (item.quantity <= 0) storeCart = storeCart.filter(i => i.id !== item.id); updateStoreCartIcon(); updateStoreCartModalView(); } }
+                if (e.target.classList.contains('store-cart-remove')) { storeCart = storeCart.filter(i => i.id !== parseInt(e.target.dataset.id)); updateStoreCartIcon(); updateStoreCartModalView(); }
+                if (e.target.id === 'checkout-btn') processCheckout();
+            });
+
+            mainContent.addEventListener('click', e => {
+                if (e.target.id === 'add-product-btn') showProductModal();
+                if (e.target.classList.contains('edit-product-btn')) showProductModal(products.find(p => p.id === parseInt(e.target.dataset.id)));
+                if (e.target.id === 'complete-sale-btn') processSale();
+                if (e.target.classList.contains('cart-qty-increase')) { const i = posCart.find(it => it.id === parseInt(e.target.dataset.id)), p = products.find(pr => pr.id === parseInt(e.target.dataset.id)); if(i && p && i.quantity < p.quantity) i.quantity++; updateCartView(); }
+                if (e.target.classList.contains('cart-qty-decrease')) { const i = posCart.find(it => it.id === parseInt(e.target.dataset.id)); if(i) i.quantity--; if(i && i.quantity <= 0) posCart = posCart.filter(it => it.id !== i.id); updateCartView(); }
+                if (e.target.classList.contains('cart-remove')) { posCart = posCart.filter(i => i.id !== parseInt(e.target.dataset.id)); updateCartView(); }
+            });
+            
+            mainContent.addEventListener('input', e => { if (e.target.id === 'inventory-search') populateInventoryTable(e.target.value); if (e.target.id === 'pos-search') populatePOSGrid(e.target.value); });
+            
+            productModalContainer.addEventListener('submit', e => {
+                e.preventDefault(); if (e.target.id !== 'product-form') return;
+                const id = document.getElementById('product-id').value; let categoryValue = document.getElementById('product-category').value;
+                if (categoryValue === 'new') { const newCategory = prompt("Please enter the new category name:"); if (newCategory) categoryValue = newCategory; else return; }
+                const newProductData = { name: document.getElementById('product-name').value, sku: document.getElementById('product-sku').value, category: categoryValue, price: parseFloat(document.getElementById('product-price').value), quantity: parseInt(document.getElementById('product-quantity').value), description: document.getElementById('product-description').value };
+                if (id) { const index = products.findIndex(p => p.id == id); products[index] = { ...products[index], ...newProductData }; } 
+                else { const newId = Date.now(); products.push({ ...newProductData, id: newId, soldCount: 0, imageUrl: `https://placehold.co/400x400/e2e8f0/64748b?text=${newProductData.name.replace(' ','+')}` }); }
+                hideProductModal(); populateInventoryTable(); if(pageTitle.textContent === 'Online Store') renderStore(mainContent);
+            });
+
+            productModalContainer.addEventListener('click', async e => {
+                 if (e.target.closest('#generate-description-btn')) {
+                    const button = e.target.closest('#generate-description-btn'); const name = document.getElementById('product-name').value; const category = document.getElementById('product-category').value;
+                    if (!name || !category) { showToast('Please enter a product name and category first.', 'error'); return; }
+                    const prompt = `Write a short, appealing e-commerce product description for a product named "${name}" in the "${category}" category for a Nigerian supermarket. Make it one paragraph, about 20-30 words, and engaging for online shoppers.`;
+                    const description = await callGeminiAPI(prompt, button); document.getElementById('product-description').value = description;
+                }
+            });
+
+// ➡️ ADD THIS EVENT LISTENER BLOCK near the end of your script:
+document.getElementById('cart-icon-btn').addEventListener('click', () => {
+    renderStoreCartModal();
+});
+
+            loginModalContainer.addEventListener('submit', e => {
+                e.preventDefault(); if (e.target.id !== 'login-form') return;
+                const password = document.getElementById('password').value; const errorEl = document.getElementById('login-error');
+                if (password === userCredentials[targetRole]) { hideLoginModal(); showToast(`Successfully logged in as ${targetRole}.`, 'success'); updateUIForRole(targetRole); } 
+                else { errorEl.textContent = 'Incorrect password. Please try again.'; showToast('Login failed.', 'error'); }
+            });
+
+            updateUIForRole(currentRole);
+
+            
+        });
+    </script>
+    
+</body>
+</html>
+

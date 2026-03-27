@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gainmore Supermarket - Shop Online</title>
+    <link rel="stylesheet" href="./dist/css/output.css">
+    <link rel="stylesheet" href="./fontawesome-free-6.6.0-web/css/all.min.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+
+<body class="bg-gray-50">
+
+    <div id="app">
+        <div
+            class="fixed w-full z-20 top-0 left-0 bg-white shadow-lg flex items-center justify-between px-6 py-[18px]">
+            <div class="text-2xl font-bold text-gray-700 flex items-center space-x-3">
+                <div
+                    class="text-2xl text-green-600 bg-black p-2 w-[50px] h-[50px] flex items-center justify-center rounded-full">
+                    <i class="fa-solid fa-cart-shopping"></i> </div>
+                <div class="flex flex-col -space-y-1">
+                    <h1>Gainmore</h1>
+                    <span class="text-green-400 text-md text-[17px]">Online Shop</span>
+                </div>
+            </div>
+
+            <div class="flex items-center w-full max-w-xl mx-8 bg-gray-100 rounded-full shadow-inner p-2">
+                <input type="text" placeholder="Search for Groceries, Fruits, Snacks..."
+                    class="w-full bg-transparent border-none focus:outline-none px-3 placeholder-gray-500 text-gray-700">
+                <i class="fas fa-search text-gray-400 text-lg cursor-pointer px-2"></i>
+            </div>
+
+            <div class="flex items-center space-x-7">
+                <a href="#cart" class="relative">
+                    <i id="cartIcon" class="fa-solid fa-cart-shopping nav-link text-gray-600 text-xl cursor-pointer hover:text-green-600"></i>
+                    <span class="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">3</span>
+                </a>
+                
+                <div class="relative inline-block text-left">
+                    <span id="profile-btn" class="flex gap-2 items-center cursor-pointer">
+                        <img class="w-[30px] h-[30px] rounded-full object-cover" src="userImage/IMG_20230729_100722.jpg" alt="user">
+                        <p class="font-medium text-gray-700">Goldie</p>
+                        <i class="fas fa-chevron-down text-sm"></i>
+                    </span>
+                    <div id="dropdown-menu"
+                        class="hidden absolute right-0 mt-3 w-40 bg-white rounded-lg shadow-xl border border-gray-100">
+                        <ul class="py-2">
+                            <li>
+                                <a href="#" class="block px-4 py-2 text-gray-700 hover:bg-green-100"><i class="fas fa-user mr-2"></i>My Profile</a>
+                            </li>
+                            <li>
+                                <a href="#" class="block px-4 py-2 text-gray-700 hover:bg-green-100"><i class="fas fa-box-open mr-2"></i>My Orders</a>
+                            </li>
+                            <hr>
+                            <li>
+                                <a href="login.html" class="block px-4 py-2 text-red-600 hover:bg-red-50"><i class="fas fa-sign-out-alt mr-2"></i>Logout</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <main class="mt-[90px] p-6 max-w-8xl mx-auto">
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+                <aside class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg h-fit">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">Shop by Category</h2>
+                    <nav class="space-y-3">
+                        <a href="#" class="block text-gray-600 hover:text-green-600 font-medium transition duration-150">
+                            <i class="fas fa-apple-alt mr-3"></i>Fresh Produce
+                        </a>
+                        <a href="#" class="block text-gray-600 hover:text-green-600 font-medium transition duration-150">
+                            <i class="fas fa-bread-slice mr-3"></i>Bakery & Dairy
+                        </a>
+                        <a href="#" class="block text-gray-600 hover:text-green-600 font-medium transition duration-150">
+                            <i class="fas fa-drumstick-bite mr-3"></i>Meat & Seafood
+                        </a>
+                        <a href="#" class="block text-gray-600 hover:text-green-600 font-medium transition duration-150">
+                            <i class="fas fa-coffee mr-3"></i>Beverages & Drinks
+                        </a>
+                        <a href="#" class="block text-gray-600 hover:text-green-600 font-medium transition duration-150">
+                            <i class="fas fa-cubes mr-3"></i>Pantry & Dry Goods
+                        </a>
+                        <a href="#" class="block text-gray-600 hover:text-green-600 font-medium transition duration-150">
+                            <i class="fas fa-soap mr-3"></i>Household Essentials
+                        </a>
+                    </nav>
+                </aside>
+
+                <section class="lg:col-span-3">
+                    <h1 class="text-3xl font-extrabold text-gray-800 mb-6">Featured Products ✨</h1>
+                    <div id="CustomerProductList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition duration-300 relative">
+                            <span class="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full z-10">20% OFF</span>
+                            
+                            <img src="userImage/FB_IMG_1595767267005.jpg" alt="Pack of Red Apples" class="w-full h-60 object-cover">
+                            
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold text-gray-800 truncate">Fresh Red Apples (1kg)</h3>
+                                <p class="text-sm text-gray-500 mb-2">Crisp and sweet, premium quality.</p>
+                                
+                                <div class="flex items-center justify-between mt-3">
+                                    <div>
+                                        <p class="text-xs text-gray-400 line-through">₦2,500</p>
+                                        <p class="text-xl font-bold text-green-600">₦2,000</p>
+                                    </div>
+                                    <button class="bg-green-600 text-white p-3 rounded-full hover:bg-green-700 transition duration-150 shadow-md flex items-center space-x-1">
+                                        <i class="fas fa-plus"></i> 
+                                        </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition duration-300">
+                            <img src="userImage/FB_IMG_1595767277401.jpg" alt="Loaf of Bread" class="w-full h-40 object-cover">
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold text-gray-800 truncate">Artisan Sliced Loaf</h3>
+                                <p class="text-sm text-gray-500 mb-2">Baked fresh daily.</p>
+                                <div class="flex items-center justify-between mt-3">
+                                    <p class="text-xl font-bold text-gray-800">₦850</p>
+                                    <button class="bg-green-600 text-white p-3 rounded-full hover:bg-green-700 transition duration-150 shadow-md flex items-center space-x-1">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                         <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition duration-300">
+                            <img src="userImage/FB_IMG_1595767279865.jpg" alt="Carton of Milk" class="w-full h-40 object-cover">
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold text-gray-800 truncate">Full Cream Milk (1L)</h3>
+                                <p class="text-sm text-gray-500 mb-2">Rich and creamy goodness.</p>
+                                <div class="flex items-center justify-between mt-3">
+                                    <p class="text-xl font-bold text-gray-800">₦1,200</p>
+                                    <button class="bg-green-600 text-white p-3 rounded-full hover:bg-green-700 transition duration-150 shadow-md flex items-center space-x-1">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                         <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition duration-300">
+                            <img src="userImage/FB_IMG_1597073508902.jpg" alt="Noodle Pack" class="w-full h-40 object-cover">
+                            <div class="p-4">
+                                <h3 class="text-lg font-semibold text-gray-800 truncate">Instant Noodles (10-Pack)</h3>
+                                <p class="text-sm text-gray-500 mb-2">Quick meal solution.</p>
+                                <div class="flex items-center justify-between mt-3">
+                                    <p class="text-xl font-bold text-gray-800">₦1,800</p>
+                                    <button class="bg-green-600 text-white p-3 rounded-full hover:bg-green-700 transition duration-150 shadow-md flex items-center space-x-1">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        </div>
+                </section>
+                
+                <section class="lg:col-span-4 mt-8">
+                    <div id="cartSection" class="w-full">
+                         <h2 class="text-2xl font-bold mb-4">Your Shopping Cart</h2>
+                        <div class="flex flex-col lg:flex-row gap-6">
+                            <div class="flex-1 overflow-hidden bg-white shadow-xl rounded-xl p-4" id="cartList">
+                                <p class="text-gray-500 p-4">Your cart is currently empty. Start shopping above! 🛒</p>
+                                </div>
+                            <div class="w-full lg:w-[300px] bg-white shadow-xl rounded-xl p-6 h-fit">
+                                <h3 class="text-lg font-semibold mb-4 border-b pb-2">Order Summary</h3>
+                                <div class="flex justify-between mb-2 text-gray-700"><span>Subtotal</span><span id="subTotal" class="font-semibold">₦0</span></div>
+                                <div class="flex justify-between mb-2 text-gray-700"><span>Tax</span><span id="tax" class="font-semibold">₦0</span></div>
+                                <div class="flex justify-between mb-4 text-gray-700"><span>Discount</span><span id="discount" class="font-semibold text-green-500">₦0</span></div>
+                                <hr class="my-2">
+                                <div id="orderTotal" class="flex justify-between mb-6 text-gray-900 font-semibold text-xl">
+                                    <span>Order total</span>
+                                    <span>₦0</span>
+                                </div>
+                                <button id="checkOutBtn"
+                                    class="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition">
+                                    Proceed to Checkout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+        
+        <footer class="bg-white mt-12 p-6 text-center text-gray-500 border-t">
+            <p>&copy; 2025 Gainmore Supermarket. All rights reserved.</p>
+        </footer>
+
+    </div>
+
+    <div id="paymentContainer" class="hidden w-full fixed top-0 z-40 bg-black/50">
+        </div>
+    <script src="./dist/js/index.js"></script>
+    <script>
+        // JS to toggle the profile dropdown
+        document.getElementById('profile-btn').addEventListener('click', function() {
+            document.getElementById('dropdown-menu').classList.toggle('hidden');
+        });
+        document.addEventListener('click', function(event) {
+            const isClickInside = document.getElementById('profile-btn').contains(event.target) || document.getElementById('dropdown-menu').contains(event.target);
+            if (!isClickInside) {
+                document.getElementById('dropdown-menu').classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+
+</html>
